@@ -1,13 +1,27 @@
+from comparison_settings import ComparisonSettings
 from extractor import extract_source, extract_target
 from matcher import PDFMatcher
 from highlighter import PDFHighlighter
 from config import SOURCE_PDF, TARGET_PDF, OUTPUT_FOLDER
 from report_generator import ReportGenerator
 from config import get_report_file
+from project_initializer import ProjectInitializer
 
 def main():
-
+    ProjectInitializer.initialize()
     print("\nPDF Comparison Tool")
+
+    settings = ComparisonSettings(
+        ignore_case=False,
+        ignore_punctuation=False,
+        ignore_whitespace=False,
+        ignore_quotes = False,
+        ignore_dashes= True,
+        ignore_headers=False,
+        ignore_footers=False,
+        ignore_page_numbers=False,
+        similarity_threshold=90
+    )
 
     print("\nSTEP 1")
 
@@ -23,7 +37,7 @@ def main():
 
     print("\nSTEP 3")
 
-    matches = matcher.match_documents()
+    matches = matcher.match_documents(settings)
     matcher.print_match_metrics(matches)
 
     print("\nSTEP 4")
@@ -58,6 +72,8 @@ def main():
         TARGET_PDF.name,
         differences
     )
+
+
 
 if __name__ == "__main__":
     main()

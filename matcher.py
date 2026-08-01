@@ -1,4 +1,5 @@
 import math
+import string
 
 from loader import PDFLoader
 from config import (
@@ -10,6 +11,7 @@ from config import (
 from models.match import Match
 from models.difference import Difference
 from rapidfuzz import fuzz
+from comparison_settings import ComparisonSettings
 
 class PDFMatcher:
 
@@ -17,8 +19,107 @@ class PDFMatcher:
 
         self.source = None
         self.target = None
+        self.settings = ComparisonSettings()
+
+    def normalize_text(self, text):
+
+        normalized_text = text
+
+        if self.settings.ignore_case:
+            normalized_text = self.normalize_case(normalized_text)
+
+        if self.settings.ignore_quotes:
+            normalized_text = self.normalize_quotes(normalized_text)
+
+        if self.settings.ignore_dashes:
+            normalized_text = self.normalize_dashes(normalized_text)
+
+        if self.settings.ignore_punctuation:
+            normalized_text = self.normalize_punctuation(normalized_text)
+
+        if self.settings.ignore_whitespace:
+            normalized_text = self.normalize_whitespace(normalized_text)
+
+        return normalized_text
+
+    def normalize_case(self, text):
+
+        return text.lower()
+
+    def normalize_punctuation(self, text):
+
+        normalized_text = ""
+
+        for index, char in enumerate(text):
+
+            # Keep apostrophes
+            if char == "'":
+                normalized_text += char
+                continue
+
+            # Keep decimal points between digits
+            if (
+                    char == "."
+                    and index > 0
+                    and index < len(text) - 1
+                    and text[index - 1].isdigit()
+                    and text[index + 1].isdigit()
+            ):
+                normalized_text += char
+                continue
+
+            # Skip punctuation
+            if char in string.punctuation:
+                continue
+
+            normalized_text += char
+
+        return normalized_text
+
+    def normalize_whitespace(self, text):
+
+        return " ".join(text.split())
+
+    def normalize_quotes(self, text):
+
+        quote_mapping = {
+
+            "“": '"',
+            "”": '"',
+
+            "‘": "'",
+            "’": "'"
+        }
+
+        normalized_text = ""
+
+        for char in text:
+            normalized_text += quote_mapping.get(char, char)
+
+        return normalized_text
+
+    def normalize_dashes(self, text):
+
+        dash_mapping = {
+
+            "‐": "-",
+            "-": "-",
+            "–": "-",
+            "—": "-",
+            "−": "-"
+        }
+
+        normalized_text = ""
+
+        for char in text:
+            normalized_text += dash_mapping.get(char, char)
+
+        return normalized_text
 
     def calculate_similarity(self, source_text, target_text):
+
+        source_text = self.normalize_text(source_text)
+        target_text = self.normalize_text(target_text)
 
         return fuzz.ratio(source_text, target_text)
 
@@ -145,8 +246,9 @@ class PDFMatcher:
 
     # --------------------------------------------------------
 
-    def match_documents(self):
-
+    def match_documents(self, settings=None):
+        if settings is not None:
+            self.settings = settings
         all_matches = []
 
         for source_page, target_page in zip(
@@ -162,32 +264,7 @@ class PDFMatcher:
 
         return all_matches
     # --------------------------------------------------------
-    # def print_match_metrics(self, matches):
-    #
-    #     print("\nMatch Metrics")
-    #     print("-" * 80)
-    #
-    #     for match in matches:
-    #
-    #         # Deleted word
-    #         if match.target_word is None:
-    #             print(
-    #                 f"{match.source_word['text']:20}"
-    #                 f" -> "
-    #                 f"<DELETED>"
-    #             )
-    #
-    #             continue
-    #
-    #         # Modified word
-    #         if match.source_word["text"] != match.target_word["text"]:
-    #             print(
-    #                 f"{match.source_word['text']:20}"
-    #                 f" -> "
-    #                 f"{match.target_word['text']:20}"
-    #                 f"| Distance = {match.distance:6.2f}"
-    #                 f"| Similarity = {match.similarity:6.2f}"
-    #             )
+
     def print_match_metrics(self, matches):
 
         print("\nMatch Metrics")
@@ -235,6 +312,10 @@ class PDFMatcher:
                 matched_targets[page].add(match.target_index)
 
             source_text = match.source_word["text"]
+
+            # -----------------------------
+            # Deleted Word
+            # -----------------------------
             if match.target_word is None:
                 deleted += 1
 
@@ -252,7 +333,7 @@ class PDFMatcher:
 
                         difference_type="DELETED",
 
-                        source_text=match.source_word["text"],
+                        source_text=source_text,
 
                         target_text="",
 
@@ -268,10 +349,22 @@ class PDFMatcher:
 
             target_text = match.target_word["text"]
 
-            if source_text == target_text:
+            # -----------------------------
+            # Normalize both texts
+            # -----------------------------
+            normalized_source = self.normalize_text(source_text)
+            normalized_target = self.normalize_text(target_text)
+
+            # -----------------------------
+            # Same Word
+            # -----------------------------
+            if normalized_source == normalized_target:
                 same += 1
                 continue
 
+            # -----------------------------
+            # Modified Word
+            # -----------------------------
             modified += 1
 
             differences.append(
@@ -344,6 +437,7 @@ class PDFMatcher:
                     )
 
                 )
+
         differences.sort(
             key=lambda diff: (
                 diff.page,

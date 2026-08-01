@@ -1,3 +1,4 @@
+# application configuration (paths, folders, output names, etc.)
 from datetime import datetime
 from pathlib import Path
 
@@ -22,13 +23,13 @@ def get_report_file(source_pdf: Path, target_pdf: Path):
 
 PROJECT_ROOT = Path(__file__).parent
 
-INPUT_FOLDER = PROJECT_ROOT / "input"
+INPUT_FOLDER = PROJECT_ROOT / "test_data/ignore_dashes"
 OUTPUT_FOLDER = PROJECT_ROOT / "output"
 TEMP_FOLDER = PROJECT_ROOT / "temp"
 LOG_FOLDER = PROJECT_ROOT / "logs"
 
-SOURCE_PDF = INPUT_FOLDER / "source.pdf"
-TARGET_PDF = INPUT_FOLDER / "target_deleted.pdf"
+SOURCE_PDF = INPUT_FOLDER / "source_dashes.pdf"
+TARGET_PDF = INPUT_FOLDER / "target_dashes.pdf"
 
 SOURCE_JSON = TEMP_FOLDER / "source_words.json"
 TARGET_JSON = TEMP_FOLDER / "target_words.json"

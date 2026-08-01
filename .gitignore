@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+.venv/
+venv/
+
+# PyCharm
+.idea/
+
+# Logs
+logs/
+
+# Temporary generated files
+temp/
+
+# Generated comparison PDFs
+output/
+
+# Python packaging
+build/
+dist/
+*.egg-info/
+
+# Windows
+Thumbs.db
+
+# macOS
+.DS_Store

@@ -3,7 +3,7 @@ from matcher import PDFMatcher
 from highlighter import PDFHighlighter
 from config import SOURCE_PDF, TARGET_PDF, OUTPUT_FOLDER
 from report_generator import ReportGenerator
-from config import REPORT_FILE
+from config import get_report_file
 
 def main():
 
@@ -46,10 +46,14 @@ def main():
         "TARGET"
     )
 
+    report_file = get_report_file(
+        SOURCE_PDF,
+        TARGET_PDF
+    )
     report_generator = ReportGenerator()
 
     report_generator.generate_report(
-        REPORT_FILE,
+        report_file,
         SOURCE_PDF.name,
         TARGET_PDF.name,
         differences

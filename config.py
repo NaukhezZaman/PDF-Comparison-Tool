@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 
 # ==============================
@@ -5,6 +6,19 @@ from pathlib import Path
 # ==============================
 # Instead of writing paths like: "C:/Users/Naukhez/Documents/..." everywhere,
 # we define them once. If you move the project tomorrow, everything still works.
+
+def get_report_file(source_pdf: Path, target_pdf: Path):
+
+    timestamp = datetime.now().strftime("%d_%b_%Y_%H%M%S")
+
+    filename = (
+        f"{source_pdf.stem}_"
+        f"{target_pdf.stem}_"
+        f"comparison_report_"
+        f"{timestamp}.xlsx"
+    )
+
+    return OUTPUT_FOLDER / filename
 
 PROJECT_ROOT = Path(__file__).parent
 
@@ -24,5 +38,3 @@ TARGET_JSON = TEMP_FOLDER / "target_words.json"
 # ----------------------------------------------------
 
 MAX_MATCH_DISTANCE = 30
-
-REPORT_FILE = OUTPUT_FOLDER / "comparison_report.xlsx"

@@ -2,6 +2,8 @@ from extractor import extract_source, extract_target
 from matcher import PDFMatcher
 from highlighter import PDFHighlighter
 from config import SOURCE_PDF, TARGET_PDF, OUTPUT_FOLDER
+from report_generator import ReportGenerator
+from config import REPORT_FILE
 
 def main():
 
@@ -44,7 +46,14 @@ def main():
         "TARGET"
     )
 
+    report_generator = ReportGenerator()
 
+    report_generator.generate_report(
+        REPORT_FILE,
+        SOURCE_PDF.name,
+        TARGET_PDF.name,
+        differences
+    )
 
 if __name__ == "__main__":
     main()

@@ -24,3 +24,5 @@ TARGET_JSON = TEMP_FOLDER / "target_words.json"
 # ----------------------------------------------------
 
 MAX_MATCH_DISTANCE = 30
+
+REPORT_FILE = OUTPUT_FOLDER / "comparison_report.xlsx"

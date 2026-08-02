@@ -12,6 +12,7 @@ from models.match import Match
 from models.difference import Difference
 from rapidfuzz import fuzz
 from comparison_settings import ComparisonSettings
+from models.candidate import Candidate
 
 class PDFMatcher:
 
@@ -131,6 +132,45 @@ class PDFMatcher:
 
         return round(confidence, 2)
 
+    def filter_candidates(self, candidates):
+
+        valid_candidates = []
+
+        for candidate in candidates:
+
+            if candidate.similarity >= self.settings.similarity_threshold:
+                valid_candidates.append(candidate)
+
+        return valid_candidates
+
+    def rank_candidates(self, candidates):
+
+        if not candidates:
+            return None
+
+        return max(
+            candidates,
+            key=lambda c: (
+                c.confidence,
+                c.line_score,
+                c.reading_order_score,
+                c.similarity,
+                -c.distance
+            )
+        )
+
+    def get_best_candidate(self, candidates):
+
+        if not candidates:
+            return None
+
+        valid_candidates = self.filter_candidates(candidates)
+
+        if not valid_candidates:
+            return None
+
+        return self.rank_candidates(valid_candidates)
+
     # --------------------------------------------------------
 
     def load_documents(self):
@@ -141,6 +181,11 @@ class PDFMatcher:
 
         print("\nJSON loaded successfully.")
 
+    # -------------------------------------------------------
+    def debug_print(self, *args, **kwargs):
+
+        if getattr(self.settings, "debug_matching", True):
+            print(*args, **kwargs)
     # --------------------------------------------------------
 
     @staticmethod
@@ -168,82 +213,240 @@ class PDFMatcher:
 
     # --------------------------------------------------------
 
-    def match_page(self, source_page, target_page):
+    def get_candidates(self, source_word, target_words, matched_target_indices ):
 
-        matches = []
+        candidates = []
+
+        for target_index, target_word in enumerate(target_words):
+
+            # Skip already matched words
+            if target_index in matched_target_indices:
+                continue
+
+            d = self.distance(
+                source_word["bbox"],
+                target_word["bbox"]
+            )
+
+            if d <= MAX_MATCH_DISTANCE:
+                candidates.append(
+
+                    Candidate(
+                        source_word=source_word,
+                        target_index=target_index,
+                        target_word=target_word,
+                        distance=d
+                    )
+
+                )
+
+        return candidates
+
+    # ---------------------------------------------------------
+
+    def score_candidates(self, candidates):
+
+        for candidate in candidates:
+            candidate.similarity = self.calculate_similarity(
+                candidate.source_word["text"],
+                candidate.target_word["text"]
+            )
+
+            candidate.confidence = self.calculate_confidence(
+                candidate.similarity,
+                candidate.distance
+            )
+            reading_difference = abs(
+                candidate.source_index -
+                candidate.target_index
+            )
+
+            candidate.reading_order_score = max(
+                0,
+                100 - reading_difference
+            )
+            source_line = candidate.source_word["line"]
+            target_line = candidate.target_word["line"]
+
+            candidate.line_score = (
+                100 if source_line == target_line else 0
+            )
+
+    # --------------------------------------------------------
+    def collect_page_candidates(self, source_page, target_page):
+
+        pending_matches = []
+        all_candidates = []
 
         target_words = target_page["words"]
 
-        # Keeps track of which target words are already matched
+        # Empty set because we want ALL possible candidates
         matched_target_indices = set()
 
-        # Enumerate gives us both the index and the word
         for source_index, source_word in enumerate(source_page["words"]):
 
-            nearest = None
-            nearest_distance = float("inf")
-            nearest_target_index = None
+            candidates = self.get_candidates(
+                source_word,
+                target_words,
+                matched_target_indices
+            )
 
-            # Iterate through target words with their index
-            for target_index, target_word in enumerate(target_words):
+            for candidate in candidates:
+                candidate.source_index = source_index
 
-                # Skip target words that are already matched
-                if target_index in matched_target_indices:
-                    continue
+            self.score_candidates(candidates)
 
-                d = self.distance(
-                    source_word["bbox"],
-                    target_word["bbox"]
+            all_candidates.extend(candidates)
+
+            pending_matches.append({
+                "source_index": source_index,
+                "source_word": source_word,
+                "candidates": candidates
+            })
+
+            # Debug Output (same as before)
+            if candidates:
+
+                self.debug_print(
+                    f"\nSource : {source_word['text']} "
+                    f"(Index={source_index}, "
+                    f"Line={source_word['line']}, "
+                    f"Block={source_word['block']})"
                 )
 
-                if d < nearest_distance:
-                    nearest_distance = d
-                    nearest = target_word
-                    nearest_target_index = target_index
+                for candidate in candidates:
+                    self.debug_print(candidate)
 
-            # Accept the match only if it is within the threshold
-            if (
-                    nearest_target_index is not None
-                    and nearest_distance <= MAX_MATCH_DISTANCE
-            ):
+        return pending_matches, all_candidates
+    # --------------------------------------------------------
 
-                matched_target_indices.add(nearest_target_index)
+    def match_page(self, source_page, target_page):
 
-            else:
+        # ---------------------------------------------------------
+        # PASS 1 : Collect every possible candidate
+        # ---------------------------------------------------------
 
-                nearest = None
-                nearest_target_index = None
-                nearest_distance = float("inf")
+        pending_matches, all_candidates = self.collect_page_candidates(
+            source_page,
+            target_page
+        )
 
-            similarity = 0
-            confidence = 0
+        matches = []
 
-            if nearest is not None:
-                similarity = self.calculate_similarity(
-                    source_word["text"],
-                    nearest["text"]
+        self.debug_print(f"\nTotal Page Candidates : {len(all_candidates)}")
+
+        valid_candidates = self.filter_candidates(all_candidates)
+
+        self.debug_print(f"Valid Candidates      : {len(valid_candidates)}")
+
+        sorted_candidates = sorted(
+            valid_candidates,
+            key=lambda c: (
+                c.confidence,
+                c.line_score,
+                c.reading_order_score,
+                c.similarity,
+                -c.distance
+            ),
+            reverse=True
+        )
+
+        accepted_candidates = self.assign_matches_globally(
+            sorted_candidates
+        )
+
+        accepted_lookup = {}
+
+        for candidate in accepted_candidates:
+            accepted_lookup[id(candidate.source_word)] = candidate
+
+        self.debug_print(f"\nAccepted Lookup Size : {len(accepted_lookup)}")
+
+        self.debug_print("\nTop Ranked Candidates")
+
+        for candidate in sorted_candidates[:10]:
+            self.debug_print(candidate)
+
+        # ---------------------------------------------------------
+        # PASS 2 : Build Match objects
+        # ---------------------------------------------------------
+
+        matched_target_indices = set()
+
+        for item in pending_matches:
+
+            source_index = item["source_index"]
+            source_word = item["source_word"]
+
+            best_candidate = accepted_lookup.get(id(source_word))
+
+            if best_candidate is None:
+                matches.append(
+                    Match(
+                        page=source_page["page_number"],
+                        source_index=source_index,
+                        source_word=source_word,
+                        target_word=None,
+                        target_index=None,
+                        distance=0,
+                        similarity=0,
+                        confidence=0
+                    )
                 )
 
-                confidence = self.calculate_confidence(
-                    similarity,
-                    nearest_distance
-                )
+                continue
+
+            matched_target_indices.add(best_candidate.target_index)
 
             matches.append(
                 Match(
                     page=source_page["page_number"],
                     source_index=source_index,
-                    target_index=nearest_target_index,
                     source_word=source_word,
-                    target_word=nearest,
-                    distance=nearest_distance,
-                    similarity=similarity,
-                    confidence=confidence
+                    target_word=best_candidate.target_word,
+                    target_index=best_candidate.target_index,
+                    distance=best_candidate.distance,
+                    similarity=best_candidate.similarity,
+                    confidence=best_candidate.confidence
                 )
             )
 
         return matches
 
+    # -------------------------------------------------------
+
+    def assign_matches_globally(self, sorted_candidates):
+
+        matched_sources = set()
+        matched_targets = set()
+
+        accepted_candidates = []
+
+        for candidate in sorted_candidates:
+
+            source_id = id(candidate.source_word)
+            target_id = id(candidate.target_word)
+
+            if source_id in matched_sources:
+                continue
+
+            if target_id in matched_targets:
+                continue
+
+            matched_sources.add(source_id)
+            matched_targets.add(target_id)
+
+            candidate.selected = True
+
+            accepted_candidates.append(candidate)
+
+        self.debug_print("\nGlobally Accepted Candidates")
+        self.debug_print("-" * 80)
+
+        for candidate in accepted_candidates:
+            self.debug_print(candidate)
+
+        return accepted_candidates
     # --------------------------------------------------------
 
     def match_documents(self, settings=None):

@@ -16,3 +16,4 @@ class ComparisonSettings:
     ignore_page_numbers: bool = False
 
     similarity_threshold: int = 90
+    debug_matching: bool = True

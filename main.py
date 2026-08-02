@@ -16,11 +16,12 @@ def main():
         ignore_punctuation=False,
         ignore_whitespace=False,
         ignore_quotes = False,
-        ignore_dashes= True,
+        ignore_dashes= False,
         ignore_headers=False,
         ignore_footers=False,
         ignore_page_numbers=False,
-        similarity_threshold=90
+        similarity_threshold=80,
+        debug_matching=True
     )
 
     print("\nSTEP 1")
